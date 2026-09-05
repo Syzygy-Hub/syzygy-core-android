@@ -1,0 +1,9 @@
+# Syzygy Repository Manifest
+name: syzygy-core-android
+type: core
+platform: android
+language: kotlin
+package_manager: jitpack
+license: MIT
+version: 1.0.0
+syzygy_foundation: ">=1.1.0"
