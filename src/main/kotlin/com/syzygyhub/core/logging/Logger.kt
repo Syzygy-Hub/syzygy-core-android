@@ -15,14 +15,20 @@ enum class LogLevel {
  * A destination that receives formatted log messages.
  */
 interface LogDestination {
-    fun write(message: String, level: LogLevel)
+    fun write(
+        message: String,
+        level: LogLevel,
+    )
 }
 
 /**
  * Console log destination that prints to stdout.
  */
 class ConsoleLogDestination : LogDestination {
-    override fun write(message: String, level: LogLevel) {
+    override fun write(
+        message: String,
+        level: LogLevel,
+    ) {
         println("[${level.name}] $message")
     }
 }

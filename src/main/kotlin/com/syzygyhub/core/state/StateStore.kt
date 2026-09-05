@@ -18,5 +18,8 @@ class StateStore<State>(initial: State) {
  * Reduces the current state with an action to produce a new state.
  */
 interface StateReducer<State, Action> {
-    fun reduce(state: State, action: Action): State
+    fun reduce(
+        state: State,
+        action: Action,
+    ): State
 }
