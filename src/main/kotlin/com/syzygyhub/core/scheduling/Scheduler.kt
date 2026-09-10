@@ -1,16 +1,112 @@
 package com.syzygyhub.core.scheduling
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
 /**
- * A cancellable handle for a scheduled operation.
+ * A handle to a scheduled operation that can be cancelled.
  */
-class CancellableTimer {
-    // TODO: cancel, isActive
-    fun cancel() {}
+interface CancellableTask {
+    /** Cancels the scheduled task. */
+    fun cancel()
+
+    /** Whether this task has been cancelled. */
+    val isCancelled: Boolean
 }
 
 /**
- * Provides debounce, throttle, and delayed execution utilities.
+ * Schedules tasks for delayed execution.
  */
-class Scheduler {
-    // TODO: debounce, throttle, delay, cancellable timers
+interface Scheduler {
+    /**
+     * Schedules [action] to run after [delayMs] milliseconds.
+     * @return a [CancellableTask] handle.
+     */
+    fun schedule(
+        delayMs: Long,
+        action: suspend () -> Unit,
+    ): CancellableTask
+}
+
+/**
+ * [Scheduler] implementation backed by Kotlin coroutines.
+ *
+ * @param scope the [CoroutineScope] in which tasks are launched.
+ */
+class CoroutineScheduler(private val scope: CoroutineScope) : Scheduler {
+    override fun schedule(
+        delayMs: Long,
+        action: suspend () -> Unit,
+    ): CancellableTask {
+        val job =
+            scope.launch {
+                delay(delayMs)
+                action()
+            }
+        return JobCancellableTask(job)
+    }
+
+    private class JobCancellableTask(private val job: Job) : CancellableTask {
+        override fun cancel() = job.cancel()
+
+        override val isCancelled: Boolean get() = job.isCancelled
+    }
+}
+
+/**
+ * Debounces calls so that only the last invocation within a [delayMs] window executes.
+ *
+ * @param delayMs the debounce window in milliseconds.
+ * @param scope the [CoroutineScope] for launching the debounced action.
+ */
+class Debouncer(
+    private val delayMs: Long,
+    private val scope: CoroutineScope,
+) {
+    private var job: Job? = null
+
+    /**
+     * Schedules [action] to run after [delayMs], cancelling any previously scheduled action.
+     */
+    fun debounce(action: suspend () -> Unit) {
+        job?.cancel()
+        job =
+            scope.launch {
+                delay(delayMs)
+                action()
+            }
+    }
+}
+
+/**
+ * Throttles calls so that at most one invocation runs per [intervalMs] window.
+ *
+ * @param intervalMs the minimum interval between executions in milliseconds.
+ * @param scope the [CoroutineScope] for launching throttled actions.
+ */
+class Throttler(
+    private val intervalMs: Long,
+    private val scope: CoroutineScope,
+) {
+    private val mutex = Mutex()
+    private var lastExecutionTime = 0L
+
+    /**
+     * Executes [action] only if at least [intervalMs] has elapsed since the last execution.
+     */
+    fun throttle(action: suspend () -> Unit) {
+        scope.launch {
+            mutex.withLock {
+                val now = System.currentTimeMillis()
+                if (now - lastExecutionTime >= intervalMs) {
+                    lastExecutionTime = now
+                    action()
+                }
+            }
+        }
+    }
 }
