@@ -1,6 +1,7 @@
 package com.syzygyhub.core.state
 
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -61,4 +62,17 @@ class StateStoreTest {
         store.dispatch(Action.Reset)
         assertEquals(0, store.state.value)
     }
+
+    @Test
+    fun `concurrent dispatches do not lose updates`() =
+        runTest {
+            val store = StateStore(0, reducer)
+            val coroutineCount = 100
+            val jobs =
+                (1..coroutineCount).map {
+                    launch { store.dispatch(Action.Increment(1)) }
+                }
+            jobs.forEach { it.join() }
+            assertEquals(coroutineCount, store.state.value)
+        }
 }

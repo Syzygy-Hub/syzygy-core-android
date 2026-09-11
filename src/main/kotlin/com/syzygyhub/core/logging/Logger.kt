@@ -2,6 +2,7 @@ package com.syzygyhub.core.logging
 
 import com.syzygyhub.foundation.contracts.logging.LogEntry
 import com.syzygyhub.foundation.contracts.logging.LoggerProtocol
+import com.syzygyhub.foundation.primitives.time.SyzygyTimestamp
 import com.syzygyhub.foundation.contracts.logging.LogLevel as FoundationLogLevel
 
 /**
@@ -24,12 +25,18 @@ enum class LogLevel {
  */
 interface LogDestination {
     /**
-     * Writes a log [message] at the given [level] with optional [metadata].
+     * Writes a log [message] at the given [level] with optional [metadata],
+     * [timestamp], and [error].
+     *
+     * The [timestamp] and [error] parameters are optional and default to null for
+     * backward compatibility with existing implementations that do not use them.
      */
     fun write(
-        message: String,
         level: LogLevel,
+        message: String,
         metadata: Map<String, String>,
+        timestamp: SyzygyTimestamp? = null,
+        error: Throwable? = null,
     )
 }
 
@@ -38,12 +45,19 @@ interface LogDestination {
  */
 class ConsoleLogDestination : LogDestination {
     override fun write(
-        message: String,
         level: LogLevel,
+        message: String,
         metadata: Map<String, String>,
+        timestamp: SyzygyTimestamp?,
+        error: Throwable?,
     ) {
+        val ts = if (timestamp != null) " @${timestamp.millisecondsSinceEpoch}" else ""
         val meta = if (metadata.isEmpty()) "" else " $metadata"
-        println("[${level.name}] $message$meta")
+        println("[${level.name}]$ts $message$meta")
+        if (error != null) {
+            println("[${level.name}] Exception: ${error.message}")
+            error.printStackTrace(System.out)
+        }
     }
 }
 
@@ -76,17 +90,19 @@ class Logger : LoggerProtocol {
     }
 
     /**
-     * Logs a [message] at the given [level] with optional [metadata].
-     * The message is forwarded to all destinations whose minimum level is met.
+     * Logs a [message] at the given [level] with optional [metadata], [timestamp],
+     * and [error]. The message is forwarded to all destinations whose minimum level is met.
      */
     fun log(
         level: LogLevel,
         message: String,
         metadata: Map<String, String> = emptyMap(),
+        timestamp: SyzygyTimestamp? = null,
+        error: Throwable? = null,
     ) {
         for (entry in destinations) {
             if (level.ordinal >= entry.minLevel.ordinal) {
-                entry.destination.write(message, level, metadata)
+                entry.destination.write(level, message, metadata, timestamp, error)
             }
         }
     }
@@ -110,6 +126,6 @@ class Logger : LoggerProtocol {
                 FoundationLogLevel.ERROR -> LogLevel.ERROR
                 FoundationLogLevel.CRITICAL -> LogLevel.CRITICAL
             }
-        log(coreLevel, entry.message, entry.metadata)
+        log(coreLevel, entry.message, entry.metadata, entry.timestamp, entry.error)
     }
 }

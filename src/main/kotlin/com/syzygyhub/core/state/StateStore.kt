@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 
 /**
  * Reduces the current state with an action to produce a new state.
@@ -38,10 +39,13 @@ class StateStore<S, A>(
     val state: StateFlow<S> = _state.asStateFlow()
 
     /**
-     * Dispatches an [action] through the reducer, updating the state synchronously.
+     * Dispatches an [action] through the reducer, updating the state atomically.
+     *
+     * Uses [MutableStateFlow.update] to guarantee that concurrent dispatch calls
+     * do not overwrite each other's results via a read-modify-write race.
      */
     fun dispatch(action: A) {
-        _state.value = reducer.reduce(_state.value, action)
+        _state.update { currentState -> reducer.reduce(currentState, action) }
     }
 
     /**

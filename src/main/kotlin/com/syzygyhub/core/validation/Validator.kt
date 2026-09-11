@@ -14,7 +14,7 @@ import com.syzygyhub.foundation.primitives.validation.ValidationRule
  * `ValidationRule<String>` is expected) will encounter a type error and must provide an
  * explicit validator for the exact type.
  *
- * This will be revisited in v1.1.0 when Foundation's ValidationRule contract is finalised.
+ * This will be revisited in v1.2.0 when Foundation's ValidationRule contract is finalised.
  */
 
 /** Validates that a nullable string is not null or blank. */
@@ -47,16 +47,44 @@ class MaxLengthValidator(val maxLength: Int) : ValidationRule<String> {
         }
 }
 
-/** Validates that a string looks like an email address. */
-class EmailValidator : ValidationRule<String> {
+/**
+ * Validates that a string looks like an email address.
+ *
+ * Uses a well-formed heuristic pattern. Not RFC 5321 compliant by default.
+ * Accepts most real-world email addresses.
+ *
+ * When [strict] is `true`, the following RFC 5321 constraints are additionally enforced:
+ * - Local part (before `@`) must not exceed 64 characters.
+ * - Total address length must not exceed 255 characters.
+ * - No consecutive dots anywhere in the address.
+ * - Local part must not start or end with a dot.
+ */
+class EmailValidator(val strict: Boolean = false) : ValidationRule<String> {
     private val emailRegex = Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
 
-    override fun validate(value: String): ValidationResult =
-        if (emailRegex.matches(value)) {
-            ValidationResult.Valid
-        } else {
-            ValidationResult.Invalid(listOf("Invalid email address"))
+    override fun validate(value: String): ValidationResult {
+        if (!emailRegex.matches(value)) {
+            return ValidationResult.Invalid(listOf("Invalid email address"))
         }
+        if (strict) {
+            val atIndex = value.indexOf('@')
+            val localPart = value.substring(0, atIndex)
+
+            if (localPart.length > 64) {
+                return ValidationResult.Invalid(listOf("Local part exceeds 64 characters"))
+            }
+            if (value.length > 255) {
+                return ValidationResult.Invalid(listOf("Email address exceeds 255 characters"))
+            }
+            if (value.contains("..")) {
+                return ValidationResult.Invalid(listOf("Email address must not contain consecutive dots"))
+            }
+            if (localPart.startsWith('.') || localPart.endsWith('.')) {
+                return ValidationResult.Invalid(listOf("Local part must not start or end with a dot"))
+            }
+        }
+        return ValidationResult.Valid
+    }
 }
 
 /** Validates that a string matches the given [pattern]. */

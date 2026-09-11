@@ -1,5 +1,7 @@
 package com.syzygyhub.core.navigation
 
+import java.util.concurrent.CopyOnWriteArrayList
+
 /**
  * A navigable route with a [path] and optional [parameters].
  */
@@ -31,8 +33,8 @@ interface RouteGuard {
  * Manages a navigation stack and applies [RouteGuard] checks before navigation.
  */
 class Router {
-    private val stack = mutableListOf<Route>()
-    private val guards = mutableListOf<RouteGuard>()
+    private val stack: MutableList<Route> = CopyOnWriteArrayList()
+    private val guards: MutableList<RouteGuard> = CopyOnWriteArrayList()
 
     /** The route currently at the top of the stack, or null if empty. */
     val currentRoute: Route? get() = stack.lastOrNull()

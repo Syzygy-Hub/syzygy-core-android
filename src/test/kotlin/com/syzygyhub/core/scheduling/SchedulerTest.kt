@@ -44,14 +44,43 @@ class SchedulerTest {
         }
 
     @Test
-    fun `throttler respects interval`() =
+    fun `throttler respects interval with injected clock`() =
         runTest {
-            val throttler = Throttler(1000, this)
+            // Start fakeTime at 1 000 ms so the first call passes the
+            // `now - lastExecutionTime(0) >= intervalMs(1000)` guard.
+            var fakeTime = 1000L
+            val throttler = Throttler(1000, this, clock = { fakeTime })
             var count = 0
-            throttler.throttle { count++ }
-            advanceTimeBy(1)
+
+            // First call at t=1000 — should execute.
             throttler.throttle { count++ }
             advanceTimeBy(1)
             assertEquals(1, count)
+
+            // Second call at t=1500 — only 500 ms since last execution, should be suppressed.
+            fakeTime = 1500L
+            throttler.throttle { count++ }
+            advanceTimeBy(1)
+            assertEquals(1, count)
+        }
+
+    @Test
+    fun `throttler allows call after cooldown elapses`() =
+        runTest {
+            // Start fakeTime at 1 000 ms so the first call passes the guard.
+            var fakeTime = 1000L
+            val throttler = Throttler(1000, this, clock = { fakeTime })
+            var count = 0
+
+            // First call at t=1000 — executes.
+            throttler.throttle { count++ }
+            advanceTimeBy(1)
+            assertEquals(1, count)
+
+            // Call at t=2001 — 1 001 ms since last execution, interval has elapsed.
+            fakeTime = 2001L
+            throttler.throttle { count++ }
+            advanceTimeBy(1)
+            assertEquals(2, count)
         }
 }
