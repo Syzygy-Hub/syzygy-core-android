@@ -5,7 +5,7 @@ plugins {
 }
 
 // Single canonical version source — bump only this value on each release.
-val syzygyVersion = "1.0.0"
+val syzygyVersion = "1.1.0"
 
 group = "com.github.Syzygy-Hub"
 version = syzygyVersion

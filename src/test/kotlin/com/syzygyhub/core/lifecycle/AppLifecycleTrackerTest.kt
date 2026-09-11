@@ -2,6 +2,7 @@ package com.syzygyhub.core.lifecycle
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 
 class AppLifecycleTrackerTest {
     @Test
@@ -47,6 +48,29 @@ class AppLifecycleTrackerTest {
         tracker.removeObserver(observer)
         tracker.transition(AppLifecycleState.TERMINATED)
         assertEquals(false, called)
+    }
+
+    // -------------------------------------------------------------------------
+    // ITEM 4 — fromProcessLifecycle factory
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `fromProcessLifecycle creates a tracker in ACTIVE state`() {
+        val tracker = AppLifecycleTracker.fromProcessLifecycle()
+        assertNotNull(tracker)
+        assertEquals(AppLifecycleState.ACTIVE, tracker.currentState)
+    }
+
+    @Test
+    fun `fromProcessLifecycle onWire callback receives tracker and can drive transitions`() {
+        var wired: AppLifecycleTracker? = null
+        val tracker =
+            AppLifecycleTracker.fromProcessLifecycle { t ->
+                wired = t
+                t.transition(AppLifecycleState.BACKGROUND)
+            }
+        assertNotNull(wired)
+        assertEquals(AppLifecycleState.BACKGROUND, tracker.currentState)
     }
 
     @Test

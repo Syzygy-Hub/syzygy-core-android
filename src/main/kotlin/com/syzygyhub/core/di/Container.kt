@@ -2,6 +2,7 @@ package com.syzygyhub.core.di
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.KClass
 
 /**
@@ -34,7 +35,15 @@ class Container(private val parent: Container? = null) {
     private val registrations = mutableMapOf<KClass<*>, Registration<*>>()
     private val singletonInstances = mutableMapOf<KClass<*>, Any>()
     private val scopedInstances = mutableMapOf<KClass<*>, Any>()
-    private val resolving = mutableSetOf<KClass<*>>()
+
+    /**
+     * Tracks types currently being resolved to detect circular dependencies.
+     * Uses [ConcurrentHashMap] so the check-and-add is atomic: [ConcurrentHashMap.newKeySet]
+     * returns a set whose [MutableSet.add] returns false when the element is already present,
+     * allowing us to detect a concurrent or recursive resolution of the same type without a
+     * separate read followed by a separate write.
+     */
+    private val resolving: MutableSet<KClass<*>> = ConcurrentHashMap.newKeySet()
 
     /**
      * Registers a factory for the given [type] with the specified [lifetime].
@@ -57,11 +66,6 @@ class Container(private val parent: Container? = null) {
      */
     @Suppress("UNCHECKED_CAST")
     suspend fun <T : Any> resolve(type: KClass<T>): T {
-        // Check for circular dependency (resolving set is per-call-chain)
-        if (type in resolving) {
-            throw IllegalStateException("Circular dependency detected for ${type.simpleName}")
-        }
-
         val registration =
             registrations[type] as? Registration<T>
                 ?: return parent?.resolve(type)
@@ -94,7 +98,12 @@ class Container(private val parent: Container? = null) {
         type: KClass<T>,
         registration: Registration<T>,
     ): T {
-        resolving.add(type)
+        // Atomic check-and-add: ConcurrentHashMap.newKeySet().add() returns false when the
+        // element was already present, so the check and mark happen in one operation with no
+        // window for a concurrent caller to slip through between the two steps.
+        if (!resolving.add(type)) {
+            throw IllegalStateException("Circular dependency detected for ${type.simpleName}")
+        }
         try {
             return registration.factory(this)
         } finally {
@@ -103,8 +112,29 @@ class Container(private val parent: Container? = null) {
     }
 
     /**
+     * Clears all registrations, singleton caches, scoped caches, and the circular-dependency
+     * tracking set, returning the container to a clean state.
+     *
+     * After calling this method any subsequent [resolve] call will throw [IllegalStateException]
+     * unless new registrations are added.
+     */
+    fun resetRegistrations() {
+        registrations.clear()
+        singletonInstances.clear()
+        scopedInstances.clear()
+        resolving.clear()
+    }
+
+    /**
      * Creates a child container that inherits registrations from this container
      * but maintains its own scoped instance cache.
+     *
+     * **Scoped-through-parent behaviour**: if a [Lifetime.SCOPED] type is registered
+     * *only* in the parent (not overridden in the child), resolution from the child
+     * delegates entirely to the parent via [resolve], and the parent's scoped cache
+     * is used.  Both children will therefore receive the *same* instance for that type.
+     * To give each child scope its own independent instance, register the factory
+     * directly on each child container.
      */
     fun createChildContainer(): Container = Container(parent = this)
 }

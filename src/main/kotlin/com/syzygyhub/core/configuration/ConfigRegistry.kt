@@ -1,6 +1,7 @@
 package com.syzygyhub.core.configuration
 
 import com.syzygyhub.foundation.sharedtypes.SyzygyEnvironment
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * A typed configuration key with a [name] and a [defaultValue].
@@ -21,8 +22,8 @@ class ConfigRegistry(initialEnvironment: SyzygyEnvironment = SyzygyEnvironment.P
     var environment: SyzygyEnvironment = initialEnvironment
         private set
 
-    private val globalValues = mutableMapOf<String, Any?>()
-    private val envValues = mutableMapOf<SyzygyEnvironment, MutableMap<String, Any?>>()
+    private val globalValues: MutableMap<String, Any?> = ConcurrentHashMap()
+    private val envValues: MutableMap<SyzygyEnvironment, MutableMap<String, Any?>> = ConcurrentHashMap()
 
     /**
      * Returns the value for [key] in the current environment.
@@ -31,8 +32,26 @@ class ConfigRegistry(initialEnvironment: SyzygyEnvironment = SyzygyEnvironment.P
     @Suppress("UNCHECKED_CAST")
     fun <T> get(key: ConfigKey<T>): T {
         val envMap = envValues[environment]
-        if (envMap != null && key.name in envMap) return envMap[key.name] as T
-        if (key.name in globalValues) return globalValues[key.name] as T
+        if (envMap != null && key.name in envMap) {
+            try {
+                return envMap[key.name] as T
+            } catch (e: ClassCastException) {
+                throw ClassCastException(
+                    "Environment-specific value for config key '${key.name}' cannot be cast to the " +
+                        "expected type. Ensure the stored type matches the ConfigKey type parameter.",
+                )
+            }
+        }
+        if (key.name in globalValues) {
+            try {
+                return globalValues[key.name] as T
+            } catch (e: ClassCastException) {
+                throw ClassCastException(
+                    "Global value for config key '${key.name}' cannot be cast to the expected type. " +
+                        "Ensure the stored type matches the ConfigKey type parameter.",
+                )
+            }
+        }
         return key.defaultValue
     }
 
@@ -54,7 +73,7 @@ class ConfigRegistry(initialEnvironment: SyzygyEnvironment = SyzygyEnvironment.P
         value: T,
         forEnvironment: SyzygyEnvironment,
     ) {
-        envValues.getOrPut(forEnvironment) { mutableMapOf() }[key.name] = value
+        envValues.getOrPut(forEnvironment) { ConcurrentHashMap() }[key.name] = value
     }
 
     /**

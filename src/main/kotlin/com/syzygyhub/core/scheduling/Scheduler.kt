@@ -67,7 +67,7 @@ class Debouncer(
     private val delayMs: Long,
     private val scope: CoroutineScope,
 ) {
-    private var job: Job? = null
+    @Volatile private var job: Job? = null
 
     /**
      * Schedules [action] to run after [delayMs], cancelling any previously scheduled action.
@@ -87,10 +87,14 @@ class Debouncer(
  *
  * @param intervalMs the minimum interval between executions in milliseconds.
  * @param scope the [CoroutineScope] for launching throttled actions.
+ * @param clock a function that returns the current time in milliseconds since the Unix epoch.
+ *   Defaults to [System.currentTimeMillis]. Inject a fake clock in tests to achieve
+ *   deterministic time-based assertions without real wall-clock delays.
  */
 class Throttler(
     private val intervalMs: Long,
     private val scope: CoroutineScope,
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val mutex = Mutex()
     private var lastExecutionTime = 0L
@@ -101,7 +105,7 @@ class Throttler(
     fun throttle(action: suspend () -> Unit) {
         scope.launch {
             mutex.withLock {
-                val now = System.currentTimeMillis()
+                val now = clock()
                 if (now - lastExecutionTime >= intervalMs) {
                     lastExecutionTime = now
                     action()

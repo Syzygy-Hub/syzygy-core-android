@@ -1,5 +1,7 @@
 package com.syzygyhub.core.featureflags
 
+import java.util.concurrent.ConcurrentHashMap
+
 /**
  * Defines a feature flag with a [key], a [defaultValue], and an optional [description].
  */
@@ -22,8 +24,8 @@ interface FeatureFlagProvider {
  * Overrides take precedence over base values, which take precedence over defaults.
  */
 class InMemoryFeatureFlagProvider : FeatureFlagProvider {
-    private val values = mutableMapOf<String, Any?>()
-    private val overrides = mutableMapOf<String, Any?>()
+    private val values: MutableMap<String, Any?> = ConcurrentHashMap()
+    private val overrides: MutableMap<String, Any?> = ConcurrentHashMap()
 
     /**
      * Sets the base [value] for a [flag].
@@ -54,8 +56,26 @@ class InMemoryFeatureFlagProvider : FeatureFlagProvider {
 
     @Suppress("UNCHECKED_CAST")
     override fun <T> value(flag: FeatureFlag<T>): T {
-        if (flag.key in overrides) return overrides[flag.key] as T
-        if (flag.key in values) return values[flag.key] as T
+        if (flag.key in overrides) {
+            try {
+                return overrides[flag.key] as T
+            } catch (e: ClassCastException) {
+                throw ClassCastException(
+                    "Override value for flag '${flag.key}' cannot be cast to the expected type. " +
+                        "Ensure the stored type matches the FeatureFlag type parameter.",
+                )
+            }
+        }
+        if (flag.key in values) {
+            try {
+                return values[flag.key] as T
+            } catch (e: ClassCastException) {
+                throw ClassCastException(
+                    "Base value for flag '${flag.key}' cannot be cast to the expected type. " +
+                        "Ensure the stored type matches the FeatureFlag type parameter.",
+                )
+            }
+        }
         return flag.defaultValue
     }
 }
