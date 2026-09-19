@@ -221,6 +221,9 @@ class ContainerTest {
         (resolvers + resetters).forEach { it.join() }
 
         val concurrentExceptions = exceptions.filter { it is java.util.ConcurrentModificationException }
-        assertTrue(concurrentExceptions.isEmpty(), "No ConcurrentModificationException should be thrown: $concurrentExceptions")
+        assertTrue(
+            concurrentExceptions.isEmpty(),
+            "No ConcurrentModificationException should be thrown: $concurrentExceptions",
+        )
     }
 }
