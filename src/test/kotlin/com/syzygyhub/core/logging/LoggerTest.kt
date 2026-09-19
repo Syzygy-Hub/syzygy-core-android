@@ -1,6 +1,7 @@
 package com.syzygyhub.core.logging
 
 import com.syzygyhub.foundation.contracts.logging.LogEntry
+import com.syzygyhub.foundation.contracts.logging.LogLevel
 import com.syzygyhub.foundation.contracts.logging.LoggerProtocol
 import com.syzygyhub.foundation.primitives.time.SyzygyTimestamp
 import kotlin.test.Test
@@ -8,7 +9,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import com.syzygyhub.foundation.contracts.logging.LogLevel as FoundationLogLevel
 
 class LoggerTest {
     private data class CapturedWrite(
@@ -39,7 +39,9 @@ class LoggerTest {
 
     @Test
     fun `log level ordering`() {
-        assertTrue(LogLevel.VERBOSE.ordinal < LogLevel.CRITICAL.ordinal)
+        // CoreLogLevel ordering includes the Core-only VERBOSE tier
+        assertTrue(CoreLogLevel.VERBOSE.ordinal < CoreLogLevel.CRITICAL.ordinal)
+        // Foundation LogLevel ordering (public type, no VERBOSE)
         assertTrue(LogLevel.DEBUG.ordinal < LogLevel.ERROR.ordinal)
     }
 
@@ -103,7 +105,7 @@ class LoggerTest {
     // -------------------------------------------------------------------------
 
     private fun makeEntry(
-        level: FoundationLogLevel,
+        level: LogLevel,
         message: String = "msg",
         metadata: Map<String, String> = emptyMap(),
         timestamp: SyzygyTimestamp = SyzygyTimestamp(1_000L),
@@ -114,7 +116,7 @@ class LoggerTest {
     fun `Foundation DEBUG maps to Core DEBUG`() {
         val dest = TestDestination()
         val logger = Logger().also { it.addDestination(dest) }
-        logger.log(makeEntry(FoundationLogLevel.DEBUG))
+        logger.log(makeEntry(LogLevel.DEBUG))
         assertEquals(LogLevel.DEBUG, dest.writes.single().level)
     }
 
@@ -122,7 +124,7 @@ class LoggerTest {
     fun `Foundation INFO maps to Core INFO`() {
         val dest = TestDestination()
         val logger = Logger().also { it.addDestination(dest) }
-        logger.log(makeEntry(FoundationLogLevel.INFO))
+        logger.log(makeEntry(LogLevel.INFO))
         assertEquals(LogLevel.INFO, dest.writes.single().level)
     }
 
@@ -130,7 +132,7 @@ class LoggerTest {
     fun `Foundation WARNING maps to Core WARNING`() {
         val dest = TestDestination()
         val logger = Logger().also { it.addDestination(dest) }
-        logger.log(makeEntry(FoundationLogLevel.WARNING))
+        logger.log(makeEntry(LogLevel.WARNING))
         assertEquals(LogLevel.WARNING, dest.writes.single().level)
     }
 
@@ -138,7 +140,7 @@ class LoggerTest {
     fun `Foundation ERROR maps to Core ERROR`() {
         val dest = TestDestination()
         val logger = Logger().also { it.addDestination(dest) }
-        logger.log(makeEntry(FoundationLogLevel.ERROR))
+        logger.log(makeEntry(LogLevel.ERROR))
         assertEquals(LogLevel.ERROR, dest.writes.single().level)
     }
 
@@ -146,7 +148,7 @@ class LoggerTest {
     fun `Foundation CRITICAL maps to Core CRITICAL`() {
         val dest = TestDestination()
         val logger = Logger().also { it.addDestination(dest) }
-        logger.log(makeEntry(FoundationLogLevel.CRITICAL))
+        logger.log(makeEntry(LogLevel.CRITICAL))
         assertEquals(LogLevel.CRITICAL, dest.writes.single().level)
     }
 
@@ -154,7 +156,7 @@ class LoggerTest {
     fun `metadata forwarded via LogEntry`() {
         val dest = TestDestination()
         val logger = Logger().also { it.addDestination(dest) }
-        logger.log(makeEntry(FoundationLogLevel.INFO, metadata = mapOf("k" to "v")))
+        logger.log(makeEntry(LogLevel.INFO, metadata = mapOf("k" to "v")))
         assertEquals(mapOf("k" to "v"), dest.writes.single().metadata)
     }
 
@@ -163,7 +165,7 @@ class LoggerTest {
         val dest = TestDestination()
         val logger = Logger().also { it.addDestination(dest) }
         val ts = SyzygyTimestamp(42_000L)
-        logger.log(makeEntry(FoundationLogLevel.INFO, timestamp = ts))
+        logger.log(makeEntry(LogLevel.INFO, timestamp = ts))
         assertEquals(ts, dest.writes.single().timestamp)
     }
 
@@ -172,7 +174,7 @@ class LoggerTest {
         val dest = TestDestination()
         val logger = Logger().also { it.addDestination(dest) }
         val ex = RuntimeException("boom")
-        logger.log(makeEntry(FoundationLogLevel.ERROR, error = ex))
+        logger.log(makeEntry(LogLevel.ERROR, error = ex))
         assertNotNull(dest.writes.single().error)
         assertEquals("boom", dest.writes.single().error!!.message)
     }

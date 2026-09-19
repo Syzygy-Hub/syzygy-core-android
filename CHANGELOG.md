@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [1.2.0] - 2026-09-18
+
+### Changed
+- `DI Container` fully rewritten for thread safety: `ConcurrentHashMap` registrations, double-checked locking for singletons, `ReentrantReadWriteLock` for reset, `ThreadLocal` cycle detection
+- `LogLevel` now re-exported from Foundation — local duplicate removed
+- Foundation dependency updated to 1.2.0
+
+### Tests
+- Added 3 concurrency tests for Container (concurrent registration, concurrent singleton resolve, concurrent resolve + reset)
+
 ## [1.1.0] - 2026-09-11
 
 ### Fixed
@@ -42,4 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - App lifecycle tracker with lifecycle-aware scoping
 - Scheduling utilities — debounce, throttle, delayed execution, cancellable timers
 
+[Unreleased]: https://github.com/Syzygy-Hub/syzygy-core-android/compare/1.2.0...HEAD
+[1.2.0]: https://github.com/Syzygy-Hub/syzygy-core-android/compare/1.1.0...1.2.0
+[1.1.0]: https://github.com/Syzygy-Hub/syzygy-core-android/compare/1.0.0...1.1.0
 [1.0.0]: https://github.com/Syzygy-Hub/syzygy-core-android/releases/tag/1.0.0

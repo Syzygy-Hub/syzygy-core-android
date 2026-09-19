@@ -1,17 +1,20 @@
 package com.syzygyhub.core.logging
 
 import com.syzygyhub.foundation.contracts.logging.LogEntry
+import com.syzygyhub.foundation.contracts.logging.LogLevel
 import com.syzygyhub.foundation.contracts.logging.LoggerProtocol
 import com.syzygyhub.foundation.primitives.time.SyzygyTimestamp
-import com.syzygyhub.foundation.contracts.logging.LogLevel as FoundationLogLevel
+
+// TODO(v1.2.0): align verbose case with Foundation — pending Foundation 1.2.0
 
 /**
- * Severity level for log messages, ordered from least to most severe.
+ * Core-internal severity level that extends Foundation with [VERBOSE].
  *
- * [VERBOSE] is a Core-only extension; it maps to [FoundationLogLevel.DEBUG]
- * when satisfying the [LoggerProtocol] contract.
+ * Not part of the public API; consumers use Foundation's [LogLevel]
+ * (imported above).  Retained here so internal code that distinguishes
+ * the verbose tier can remain until Foundation 1.2.0 adds parity.
  */
-enum class LogLevel {
+internal enum class CoreLogLevel {
     VERBOSE,
     DEBUG,
     INFO,
@@ -66,10 +69,9 @@ class ConsoleLogDestination : LogDestination {
  * each gated by a minimum log level.
  *
  * Implements [LoggerProtocol] from Foundation so that Core's logger can be
- * supplied wherever a Foundation-typed logger is expected.  Foundation's
- * [LogLevel] has no [LogLevel.VERBOSE] entry; calls arriving via
- * [LoggerProtocol.log] with [FoundationLogLevel.DEBUG] are dispatched as
- * [LogLevel.DEBUG] internally.
+ * supplied wherever a Foundation-typed logger is expected.  Because [LogLevel]
+ * is now Foundation's type directly, no level translation is required when
+ * receiving entries via [LoggerProtocol.log].
  */
 class Logger : LoggerProtocol {
     private data class DestinationEntry(
@@ -81,10 +83,11 @@ class Logger : LoggerProtocol {
 
     /**
      * Adds a [destination] that will receive messages at or above [minLevel].
+     * Defaults to [LogLevel.DEBUG], the most permissive Foundation level.
      */
     fun addDestination(
         destination: LogDestination,
-        minLevel: LogLevel = LogLevel.VERBOSE,
+        minLevel: LogLevel = LogLevel.DEBUG,
     ) {
         destinations.add(DestinationEntry(destination, minLevel))
     }
@@ -101,7 +104,7 @@ class Logger : LoggerProtocol {
         error: Throwable? = null,
     ) {
         for (entry in destinations) {
-            if (level.ordinal >= entry.minLevel.ordinal) {
+            if (level >= entry.minLevel) {
                 entry.destination.write(level, message, metadata, timestamp, error)
             }
         }
@@ -112,20 +115,10 @@ class Logger : LoggerProtocol {
     // -------------------------------------------------------------------------
 
     /**
-     * Satisfies [LoggerProtocol.log] by mapping Foundation [LogLevel] values
-     * to Core [LogLevel] values.  [FoundationLogLevel.DEBUG] maps to
-     * [LogLevel.DEBUG] (VERBOSE is a Core-only concept with no Foundation
-     * equivalent).
+     * Satisfies [LoggerProtocol.log] by forwarding the entry directly.
+     * [LogLevel] is Foundation's type so no mapping is required.
      */
     override fun log(entry: LogEntry) {
-        val coreLevel =
-            when (entry.level) {
-                FoundationLogLevel.DEBUG -> LogLevel.DEBUG
-                FoundationLogLevel.INFO -> LogLevel.INFO
-                FoundationLogLevel.WARNING -> LogLevel.WARNING
-                FoundationLogLevel.ERROR -> LogLevel.ERROR
-                FoundationLogLevel.CRITICAL -> LogLevel.CRITICAL
-            }
-        log(coreLevel, entry.message, entry.metadata, entry.timestamp, entry.error)
+        log(entry.level, entry.message, entry.metadata, entry.timestamp, entry.error)
     }
 }

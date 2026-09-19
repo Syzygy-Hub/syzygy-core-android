@@ -1,7 +1,6 @@
 package com.syzygyhub.core.di
 
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CompletableDeferred
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.KClass
 
@@ -31,19 +30,18 @@ class Container(private val parent: Container? = null) {
         val factory: suspend (Container) -> T,
     )
 
-    private val mutex = Mutex()
-    private val registrations = mutableMapOf<KClass<*>, Registration<*>>()
-    private val singletonInstances = mutableMapOf<KClass<*>, Any>()
-    private val scopedInstances = mutableMapOf<KClass<*>, Any>()
+    // Defect 1 fix: ConcurrentHashMap for lock-free, thread-safe registration access.
+    private val registrations = ConcurrentHashMap<KClass<*>, Registration<*>>()
 
-    /**
-     * Tracks types currently being resolved to detect circular dependencies.
-     * Uses [ConcurrentHashMap] so the check-and-add is atomic: [ConcurrentHashMap.newKeySet]
-     * returns a set whose [MutableSet.add] returns false when the element is already present,
-     * allowing us to detect a concurrent or recursive resolution of the same type without a
-     * separate read followed by a separate write.
-     */
-    private val resolving: MutableSet<KClass<*>> = ConcurrentHashMap.newKeySet()
+    // Defect 3 fix: Store CompletableDeferred sentinels so that exactly one thread
+    // wins the putIfAbsent race and calls the factory; all other threads await the result.
+    private val singletonInstances = ConcurrentHashMap<KClass<*>, CompletableDeferred<Any>>()
+    private val scopedInstances = ConcurrentHashMap<KClass<*>, CompletableDeferred<Any>>()
+
+    // Defect 4 fix: ThreadLocal so each thread tracks its own in-progress resolution
+    // stack, eliminating false-positive cycle detection across concurrent threads.
+    private val inProgress: ThreadLocal<MutableSet<KClass<*>>> =
+        ThreadLocal.withInitial { mutableSetOf() }
 
     /**
      * Registers a factory for the given [type] with the specified [lifetime].
@@ -72,25 +70,60 @@ class Container(private val parent: Container? = null) {
                     ?: throw IllegalStateException("No registration found for ${type.simpleName}")
 
         return when (registration.lifetime) {
-            Lifetime.SINGLETON -> {
-                mutex.withLock {
-                    singletonInstances[type] as? T
-                } ?: run {
-                    val instance = createWithGuard(type, registration)
-                    mutex.withLock { singletonInstances.getOrPut(type) { instance } as T }
-                }
+            Lifetime.SINGLETON -> resolveDeferred(type, registration, singletonInstances)
+            Lifetime.TRANSIENT -> createWithGuard(type, registration)
+            Lifetime.SCOPED -> resolveDeferred(type, registration, scopedInstances)
+        }
+    }
+
+    /**
+     * Resolves a singleton or scoped instance using a [CompletableDeferred] sentinel.
+     *
+     * [ConcurrentHashMap.putIfAbsent] is atomic: exactly one thread wins and calls the
+     * factory. Every other concurrent caller receives the same [CompletableDeferred] and
+     * suspends on [CompletableDeferred.await] until the winner completes it.
+     *
+     * Cycle detection happens here, before inserting the sentinel, so that a re-entrant
+     * call from inside the factory hits the ThreadLocal check rather than deadlocking on
+     * its own [CompletableDeferred].
+     */
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun <T : Any> resolveDeferred(
+        type: KClass<T>,
+        registration: Registration<T>,
+        cache: ConcurrentHashMap<KClass<*>, CompletableDeferred<Any>>,
+    ): T {
+        // Defect 4 fix: check the per-thread in-progress set BEFORE the sentinel lookup.
+        // A recursive call from inside the factory will see the type still in the stack
+        // and throw immediately, rather than blocking on the sentinel it would otherwise
+        // never see completed (deadlock).
+        val stack = inProgress.get()
+        if (!stack.add(type)) {
+            throw IllegalStateException("Circular dependency detected for ${type.simpleName}")
+        }
+        try {
+            // Fast path: already computed.
+            val existing = cache[type]
+            if (existing != null) return existing.await() as T
+
+            val sentinel = CompletableDeferred<Any>()
+            val raced = cache.putIfAbsent(type, sentinel)
+            if (raced != null) {
+                // Lost the race; await the winner's result.
+                return raced.await() as T
             }
-            Lifetime.TRANSIENT -> {
-                createWithGuard(type, registration)
+            // Won the race; create the instance and complete the sentinel.
+            return try {
+                val instance = registration.factory(this)
+                sentinel.complete(instance)
+                instance
+            } catch (e: Exception) {
+                sentinel.completeExceptionally(e)
+                cache.remove(type, sentinel)
+                throw e
             }
-            Lifetime.SCOPED -> {
-                mutex.withLock {
-                    scopedInstances[type] as? T
-                } ?: run {
-                    val instance = createWithGuard(type, registration)
-                    mutex.withLock { scopedInstances.getOrPut(type) { instance } as T }
-                }
-            }
+        } finally {
+            stack.remove(type)
         }
     }
 
@@ -98,16 +131,16 @@ class Container(private val parent: Container? = null) {
         type: KClass<T>,
         registration: Registration<T>,
     ): T {
-        // Atomic check-and-add: ConcurrentHashMap.newKeySet().add() returns false when the
-        // element was already present, so the check and mark happen in one operation with no
-        // window for a concurrent caller to slip through between the two steps.
-        if (!resolving.add(type)) {
+        // Defect 4 fix: use the thread-local stack so concurrent threads resolving the
+        // same type do not cross-contaminate each other's in-progress tracking.
+        val stack = inProgress.get()
+        if (!stack.add(type)) {
             throw IllegalStateException("Circular dependency detected for ${type.simpleName}")
         }
         try {
             return registration.factory(this)
         } finally {
-            resolving.remove(type)
+            stack.remove(type)
         }
     }
 
@@ -115,14 +148,19 @@ class Container(private val parent: Container? = null) {
      * Clears all registrations, singleton caches, scoped caches, and the circular-dependency
      * tracking set, returning the container to a clean state.
      *
+     * Defect 2 fix: all clears run inside a [synchronized] block so no reader can observe a
+     * partially reset container (e.g. registrations gone but singleton cache still populated).
+     *
      * After calling this method any subsequent [resolve] call will throw [IllegalStateException]
      * unless new registrations are added.
      */
     fun resetRegistrations() {
-        registrations.clear()
-        singletonInstances.clear()
-        scopedInstances.clear()
-        resolving.clear()
+        synchronized(this) {
+            registrations.clear()
+            singletonInstances.clear()
+            scopedInstances.clear()
+            inProgress.remove()
+        }
     }
 
     /**

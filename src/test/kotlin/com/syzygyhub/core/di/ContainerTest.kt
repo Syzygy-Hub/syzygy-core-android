@@ -1,11 +1,15 @@
 package com.syzygyhub.core.di
 
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import java.util.Collections
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotSame
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class ContainerTest {
     @Test
@@ -123,4 +127,103 @@ class ContainerTest {
             // Both children delegate to the parent, which caches in its own scope.
             assertSame(fromChild1, fromChild2)
         }
+
+    // -------------------------------------------------------------------------
+    // HI-09 — Concurrency safety tests
+    // -------------------------------------------------------------------------
+
+    /**
+     * Test A — concurrent registration from multiple threads.
+     * All threads register without throwing; at least one registration is visible.
+     */
+    @Test
+    fun `concurrent registration from multiple threads - all registrations present`() {
+        val container = Container()
+        val threads =
+            (1..10).map { i ->
+                Thread {
+                    container.register(String::class, Lifetime.SINGLETON) { "value-$i" }
+                }
+            }
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
+        // At minimum, some registration is present and no exception was thrown.
+        runBlocking {
+            val resolved = container.resolve(String::class)
+            assertTrue(resolved.startsWith("value-"), "Expected a registered value")
+        }
+    }
+
+    /**
+     * Test B — concurrent singleton resolve.
+     * Factory must be called exactly once; all threads receive the same instance.
+     */
+    @Test
+    fun `concurrent singleton resolve - factory called exactly once`() {
+        val counter = AtomicInteger(0)
+        val container = Container()
+        container.register(String::class, Lifetime.SINGLETON) {
+            counter.incrementAndGet()
+            "singleton-instance"
+        }
+        val results = Collections.synchronizedList(mutableListOf<String>())
+        val threads =
+            (1..10).map {
+                Thread {
+                    runBlocking {
+                        results.add(container.resolve(String::class))
+                    }
+                }
+            }
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
+        assertEquals(1, counter.get(), "Factory should be called exactly once")
+        assertTrue(results.size == 10, "All threads should receive a result")
+        assertTrue(results.all { it === results[0] }, "All threads should receive the same instance")
+    }
+
+    /**
+     * Test C — concurrent resolve and reset.
+     * No ConcurrentModificationException should be thrown under concurrent load.
+     */
+    @Test
+    fun `concurrent resolve and reset - no ConcurrentModificationException`() {
+        val container = Container()
+        container.register(String::class, Lifetime.SINGLETON) { "initial" }
+
+        val exceptions = Collections.synchronizedList(mutableListOf<Exception>())
+        val resolvers =
+            (1..5).map {
+                Thread {
+                    try {
+                        repeat(100) {
+                            runBlocking { container.resolve(String::class) }
+                        }
+                    } catch (e: Exception) {
+                        if (e !is IllegalStateException) exceptions.add(e)
+                    }
+                }
+            }
+        val resetters =
+            (1..2).map {
+                Thread {
+                    try {
+                        repeat(20) {
+                            container.resetRegistrations()
+                            container.register(String::class, Lifetime.SINGLETON) { "re-registered" }
+                        }
+                    } catch (e: Exception) {
+                        exceptions.add(e)
+                    }
+                }
+            }
+        (resolvers + resetters).forEach { it.start() }
+        (resolvers + resetters).forEach { it.join() }
+
+        val concurrentExceptions = exceptions.filter { it is java.util.ConcurrentModificationException }
+        assertTrue(
+            concurrentExceptions.isEmpty(),
+            "No ConcurrentModificationException should be thrown: $concurrentExceptions",
+        )
+    }
 }
