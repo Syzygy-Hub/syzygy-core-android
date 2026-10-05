@@ -53,15 +53,25 @@ class EventBusTest {
     }
 
     @Test
-    fun `buffer full scenario returns false for overflow event`() {
-        val bus = EventBus()
-        // Publish 65 events without any subscriber consuming them; the 64-event
-        // buffer should be exhausted and at least one publish must return false.
-        var anyFalse = false
-        repeat(65) { i ->
-            val result = bus.publish(UserEvent("event-$i"))
-            if (!result) anyFalse = true
+    fun `buffer full scenario returns false for overflow event`() =
+        runTest {
+            val bus = EventBus()
+            // tryEmit only applies backpressure when a subscriber is registered.
+            // Without a subscriber, tryEmit always returns true (no one to buffer for).
+            // Register a subscriber that blocks in its lambda so it never consumes events;
+            // then publish without yielding so the 64-event buffer fills and overflows.
+            val barrier = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val subscriber = launch {
+                bus.subscribe<UserEvent>().collect { barrier.await() }
+            }
+            kotlinx.coroutines.yield() // let the subscriber register with the SharedFlow
+
+            var anyFalse = false
+            repeat(65) { i ->
+                val result = bus.publish(UserEvent("event-$i"))
+                if (!result) anyFalse = true
+            }
+            assertTrue(anyFalse, "Expected at least one publish() to return false when buffer is full")
+            subscriber.cancel()
         }
-        assertTrue(anyFalse, "Expected at least one publish() to return false when buffer is full")
-    }
 }
