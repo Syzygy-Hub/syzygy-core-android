@@ -61,9 +61,10 @@ class EventBusTest {
             // Register a subscriber that blocks in its lambda so it never consumes events;
             // then publish without yielding so the 64-event buffer fills and overflows.
             val barrier = kotlinx.coroutines.CompletableDeferred<Unit>()
-            val subscriber = launch {
-                bus.subscribe<UserEvent>().collect { barrier.await() }
-            }
+            val subscriber =
+                launch {
+                    bus.subscribe<UserEvent>().collect { barrier.await() }
+                }
             kotlinx.coroutines.yield() // let the subscriber register with the SharedFlow
 
             var anyFalse = false
