@@ -83,4 +83,34 @@ class SchedulerTest {
             advanceTimeBy(1)
             assertEquals(2, count)
         }
+
+    @Test
+    fun `debouncer cancel prevents action from firing`() =
+        runTest {
+            val debouncer = Debouncer(100, this)
+            var fired = false
+            debouncer.debounce { fired = true }
+            debouncer.cancel()
+            advanceTimeBy(200)
+            assertEquals(false, fired)
+        }
+
+    @Test
+    fun `throttler second call within interval does not execute`() =
+        runTest {
+            var fakeTime = 1000L
+            val throttler = Throttler(1000, this, clock = { fakeTime })
+            var count = 0
+
+            // First call — executes.
+            throttler.throttle { count++ }
+            advanceTimeBy(1)
+            assertEquals(1, count)
+
+            // Second call at t=1001 — only 1 ms elapsed, still within cooldown.
+            fakeTime = 1001L
+            throttler.throttle { count++ }
+            advanceTimeBy(1)
+            assertEquals(1, count)
+        }
 }
