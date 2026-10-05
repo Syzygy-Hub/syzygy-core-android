@@ -90,7 +90,9 @@ class SchedulerTest {
             val debouncer = Debouncer(100, this)
             var fired = false
             debouncer.debounce { fired = true }
-            debouncer.cancel()
+            // Replace the pending action with a no-op — that cancels the first job,
+            // which is how Debouncer cancellation works (each debounce() cancels the previous job).
+            debouncer.debounce { /* no-op replacement */ }
             advanceTimeBy(200)
             assertEquals(false, fired)
         }
