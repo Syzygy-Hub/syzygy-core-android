@@ -7,14 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-05
+
+### Changed
+- CI migrated from inline workflow to Syzygy-Hub reusable workflow (`android-ci.yml`)
+- Foundation dependency constraint updated to `>=3.0.0`
+
+### Fixed
+- Logger verbose TODO comments re-tagged to `TODO(Foundation-future)`
+- Logger destination list changed to `CopyOnWriteArrayList` for thread safety
+- CHANGELOG non-standard section headers corrected
+
+---
+
 ## [1.2.0] - 2026-09-18
 
 ### Changed
-- `DI Container` fully rewritten for thread safety: `ConcurrentHashMap` registrations, double-checked locking for singletons, `ReentrantReadWriteLock` for reset, `ThreadLocal` cycle detection
+- `DI Container` fully rewritten for thread safety: `ConcurrentHashMap` registrations, double-checked locking for singletons, `ThreadLocal` cycle detection; Container reset (`resetRegistrations()`) uses `synchronized` for atomic clearing of registrations, singleton instances, and scoped instances
 - `LogLevel` now re-exported from Foundation — local duplicate removed
 - Foundation dependency updated to 1.2.0
 
-### Tests
+### Added
 - Added 3 concurrency tests for Container (concurrent registration, concurrent singleton resolve, concurrent resolve + reset)
 
 ## [1.1.0] - 2026-09-11
@@ -54,7 +67,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - App lifecycle tracker with lifecycle-aware scoping
 - Scheduling utilities — debounce, throttle, delayed execution, cancellable timers
 
-[Unreleased]: https://github.com/Syzygy-Hub/syzygy-core-android/compare/1.2.0...HEAD
+[Unreleased]: https://github.com/Syzygy-Hub/syzygy-core-android/compare/3.0.0...HEAD
+[3.0.0]: https://github.com/Syzygy-Hub/syzygy-core-android/compare/1.2.0...3.0.0
 [1.2.0]: https://github.com/Syzygy-Hub/syzygy-core-android/compare/1.1.0...1.2.0
 [1.1.0]: https://github.com/Syzygy-Hub/syzygy-core-android/compare/1.0.0...1.1.0
 [1.0.0]: https://github.com/Syzygy-Hub/syzygy-core-android/releases/tag/1.0.0

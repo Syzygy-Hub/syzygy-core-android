@@ -4,15 +4,16 @@ import com.syzygyhub.foundation.contracts.logging.LogEntry
 import com.syzygyhub.foundation.contracts.logging.LogLevel
 import com.syzygyhub.foundation.contracts.logging.LoggerProtocol
 import com.syzygyhub.foundation.primitives.time.SyzygyTimestamp
+import java.util.concurrent.CopyOnWriteArrayList
 
-// TODO(v1.2.0): align verbose case with Foundation — pending Foundation 1.2.0
+// TODO(Foundation-future): verbose level not yet available in Foundation — add when Foundation ships it
 
 /**
  * Core-internal severity level that extends Foundation with [VERBOSE].
  *
  * Not part of the public API; consumers use Foundation's [LogLevel]
  * (imported above).  Retained here so internal code that distinguishes
- * the verbose tier can remain until Foundation 1.2.0 adds parity.
+ * the verbose tier can remain until Foundation adds LogLevel.verbose parity. See TODO(Foundation-future).
  */
 internal enum class CoreLogLevel {
     VERBOSE,
@@ -79,7 +80,7 @@ class Logger : LoggerProtocol {
         val minLevel: LogLevel,
     )
 
-    private val destinations = mutableListOf<DestinationEntry>()
+    private val destinations = CopyOnWriteArrayList<DestinationEntry>()
 
     /**
      * Adds a [destination] that will receive messages at or above [minLevel].

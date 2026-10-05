@@ -14,7 +14,7 @@ import com.syzygyhub.foundation.primitives.validation.ValidationRule
  * `ValidationRule<String>` is expected) will encounter a type error and must provide an
  * explicit validator for the exact type.
  *
- * This will be revisited in v1.2.0 when Foundation's ValidationRule contract is finalised.
+ * This will be revisited when Foundation's ValidationRule contract is finalised.
  */
 
 /** Validates that a nullable string is not null or blank. */

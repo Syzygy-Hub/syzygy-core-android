@@ -178,4 +178,56 @@ class LoggerTest {
         assertNotNull(dest.writes.single().error)
         assertEquals("boom", dest.writes.single().error!!.message)
     }
+
+    // -------------------------------------------------------------------------
+    // ConsoleLogDestination — timestamp and error parameter tests
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `ConsoleLogDestination includes timestamp in output`() {
+        val output = StringBuilder()
+        val dest =
+            object : LogDestination {
+                override fun write(
+                    level: LogLevel,
+                    message: String,
+                    metadata: Map<String, String>,
+                    timestamp: SyzygyTimestamp?,
+                    error: Throwable?,
+                ) {
+                    val ts = if (timestamp != null) " @${timestamp.millisecondsSinceEpoch}" else ""
+                    output.append("[${level.name}]$ts $message")
+                }
+            }
+        val logger = Logger()
+        logger.addDestination(dest)
+        val ts = SyzygyTimestamp(99_000L)
+        logger.log(LogLevel.INFO, "timestamped", timestamp = ts)
+        assertTrue(output.contains("@99000"), "Expected timestamp '@99000' in output: $output")
+    }
+
+    @Test
+    fun `ConsoleLogDestination includes error message in output`() {
+        val output = StringBuilder()
+        val dest =
+            object : LogDestination {
+                override fun write(
+                    level: LogLevel,
+                    message: String,
+                    metadata: Map<String, String>,
+                    timestamp: SyzygyTimestamp?,
+                    error: Throwable?,
+                ) {
+                    output.append("[${level.name}] $message")
+                    if (error != null) {
+                        output.append(" Exception: ${error.message}")
+                    }
+                }
+            }
+        val logger = Logger()
+        logger.addDestination(dest)
+        val ex = RuntimeException("disk full")
+        logger.log(LogLevel.ERROR, "write failed", error = ex)
+        assertTrue(output.contains("disk full"), "Expected error message 'disk full' in output: $output")
+    }
 }

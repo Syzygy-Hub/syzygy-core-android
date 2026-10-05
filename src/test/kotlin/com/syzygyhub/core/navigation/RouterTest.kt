@@ -67,4 +67,22 @@ class RouterTest {
         val parser = DeepLinkParser()
         assertNull(parser.parse("/unknown"))
     }
+
+    @Test
+    fun `replace on empty stack pushes route with depth 1`() {
+        val router = Router()
+        router.replace(SimpleRoute("/first"))
+        assertEquals(1, router.stackDepth)
+        assertEquals("/first", router.currentRoute?.path)
+    }
+
+    @Test
+    fun `deep link parser handles scheme URL`() {
+        val parser = DeepLinkParser()
+        parser.register("/user/{id}") { params ->
+            SimpleRoute("/user/${params["id"]}", params)
+        }
+        val route = parser.parse("myapp://host/user/42")
+        assertEquals("42", route?.parameters?.get("id"))
+    }
 }
